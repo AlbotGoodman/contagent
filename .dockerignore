@@ -1,0 +1,31 @@
+# Git
+.git
+.git/*
+!.gitignore
+.gitattributes
+.gitmodules
+.worktrees/
+.github/
+.github/actions/
+
+# Secrets (.env files and credentials)
+.env
+.env.*
+!.env.example
+secrets/
+.secrets/
+*.pem
+*.key
+*.kdbx
+
+# Docker Compose overrides
+docker-compose.override.yml
+
+# OS
+.DS_Store
+Thumbs.db
+.directory
+
+# Development
+TODO.md
+PLAN.md

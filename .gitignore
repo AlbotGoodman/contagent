@@ -1,0 +1,41 @@
+# OS
+.DS_Store
+Thumbs.db
+.directory
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.git/*
+!.gitignore
+.gitattributes
+.gitmodules
+
+# Workspace
+workspace/
+homebase/
+
+# Secrets (API keys, credentials)
+secrets/
+.secrets/
+*.pem
+*.key
+*.kdbx
+
+# Build & Distribution
+dist/
+build/
+
+# Cache
+.cache/
+
+# Docker
+docker-compose.override.yml
+
+# Development
+TODO.md
+PLAN.md
