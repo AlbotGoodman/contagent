@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "ollama/{env:OLLAMA_MODEL}",
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
@@ -8,8 +9,8 @@
         "baseURL": "http://ollama:11434/v1"
       },
       "models": {
-        "qwen3.6:35B": {
-          "name": "qwen3.6:35B"
+        "{env:OLLAMA_MODEL}": {
+          "name": "{env:OLLAMA_MODEL}"
         }
       }
     }
