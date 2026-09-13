@@ -1,4 +1,4 @@
-.PHONY: build up down shell opencode ollama model pull-model init run clean prune help logs attach-restart _check_env_file
+.PHONY: build up down shell agent ollama model pull-model init run clean prune help logs attach-restart _check_env_file
 
 .DEFAULT_GOAL := help
 
@@ -12,8 +12,8 @@ help: # Show this help message
 	@echo "Quick start:"
 	@echo "  make init      Build, start, and pull model (replaces 'make setup')"
 	@echo "  make shell     Enter agent container (bash)"
-	@echo "  make opencode  Launch OpenCode TUI agent"
-	@echo "  make run       One-liner: init + open opencode"
+	@echo "  make agent     Launch OpenCode TUI agent"
+	@echo "  make run       One-liner: init + launch agent"
 	@echo ""
 	@echo "Lifecycle:"
 	@echo "  make build            Build Docker images"
@@ -26,7 +26,7 @@ help: # Show this help message
 	@echo ""
 	@echo "Agent access:"
 	@echo "  make shell     Enter agent container (bash)"
-	@echo "  make opencode  Launch OpenCode TUI inside agent container"
+	@echo "  make agent     Launch OpenCode TUI inside agent container"
 	@echo "  make ollama    Enter ollama container (bash)"
 	@echo ""
 	@echo "Maintenance:"
@@ -56,7 +56,7 @@ init: _check_env_file up build
 	@echo ""
 	@echo "Starting Ollama model pull..."
 	$(MAKE) _quiet_model
-	@echo "Done. Run 'make shell' for bash or 'make opencode' to start the agent."
+	@echo "Done. Run 'make shell' for bash or 'make agent' to start the agent."
 	@echo ""
 
 # Pull model silently (with fallback) unless already pulled
@@ -79,7 +79,7 @@ _check_env_file:
 		exit 1; \
 	fi
 
-opencode: up # Launch OpenCode TUI inside agent container
+agent: up # Launch OpenCode TUI inside agent container
 	@echo "Launching OpenCode TUI..."
 	docker compose exec agent /bin/bash -lc "exec opencode"
 
@@ -89,7 +89,7 @@ shell: up # Drop into agent shell
 ollama: up # Enter the ollama container
 	docker compose exec ollama /bin/bash
 
-run: _check_env_file init opencode
+run: _check_env_file init agent
 	@echo ""
 
 logs: # Follow logs for all services

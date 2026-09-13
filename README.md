@@ -33,8 +33,7 @@ cp .env.example .env
 # 3. Build, start containers, and pull your model
 make init
 
-# 4a. Launch OpenCode (recommended)
-make opencode
+make agent
 
 # 4b. Or open a bash shell inside the agent container
 make shell
@@ -57,7 +56,7 @@ make down       # Stop containers (your volumes are preserved)
 | `make init` | Build, start, and pull the model (full setup) |
 | `make run` | One-liner: `init` + launch OpenCode |
 | **Interact** | |
-| `make opencode` | Launch the OpenCode coding agent TUI |
+| `make agent` | Launch the OpenCode coding agent TUI |
 | `make shell` | Open a bash shell inside the agent container |
 | `make ollama` | Open a bash shell inside the Ollama container |
 | `make logs` | Follow container logs in real-time |
