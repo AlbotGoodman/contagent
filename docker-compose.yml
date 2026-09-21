@@ -35,7 +35,7 @@ services:
       - OPENCODE_MODE=${OPENCODE_MODE}
       - HOME=/home/superuser
       - UV_SYSTEM_PYTHON=1
-      - OLLAMA_MODEL=${OLLAMA_MODEL}  # for pre-selected OR default model set ${OLLAMA_MODEL:-mistral-small:latest}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
     
     stdin_open: true
     tty: true
@@ -45,6 +45,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: contagent-ollama
+    user: "${HOST_UID}:${HOST_GID}"
     volumes:
       - ollama-models:/root/.ollama:rw
     
