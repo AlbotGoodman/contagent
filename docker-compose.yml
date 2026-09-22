@@ -52,7 +52,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: contagent-ollama
-    user: "${HOST_UID}:${HOST_GID}"
+    # user: "${HOST_UID}:${HOST_GID}"
     volumes:
       - ollama-models:/root/.ollama:rw
     
