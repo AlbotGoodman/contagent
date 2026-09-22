@@ -10,10 +10,9 @@ help: # Show this help message
 	@echo "Contagent — Dockerized agentic coding setup"
 	@echo ""
 	@echo "Quick start:"
-	@echo "  make init      Build, start, and pull model (replaces 'make setup')"
-	@echo "  make shell     Enter agent container (bash)"
-	@echo "  make agent     Launch OpenCode TUI agent"
-	@echo "  make run       One-liner: init + launch agent"
+	@echo "  make init   		   Build, start, and pull model"
+	@echo "  make agent   		   Launch OpenCode TUI agent"
+	@echo "  make run     		   One-liner: init + launch agent"
 	@echo ""
 	@echo "Lifecycle:"
 	@echo "  make build            Build Docker images"
@@ -22,18 +21,15 @@ help: # Show this help message
 	@echo ""
 	@echo "Model management:"
 	@echo "  make model            Pull Ollama model from .env"
-	@echo "  make pull-model       Alias for 'model'"
 	@echo ""
 	@echo "Agent access:"
-	@echo "  make shell     Enter agent container (bash)"
-	@echo "  make agent     Launch OpenCode TUI inside agent container"
-	@echo "  make ollama    Enter ollama container (bash)"
+	@echo "  make agent   		   Launch OpenCode TUI inside agent container"
+	@echo "  make ollama   		   Enter ollama container (bash)"
 	@echo ""
 	@echo "Maintenance:"
-	@echo "  make clean       Stop containers, keep volumes"
-	@echo "  make prune       Remove everything (containers + volumes)"
-	@echo "  make logs        Tail container logs"
-	@echo "  make attach-restart Restart agent and keep opencode running"
+	@echo "  make prune    		   Remove everything (containers + volumes)"
+	@echo "  make logs     		   Tail container logs"
+	@echo "  make attach-restart   Restart agent and keep opencode running"
 
 build: # Build Docker images
 	docker compose build
@@ -46,11 +42,9 @@ down: # Stop and remove containers
 
 model: _check_env_file
 	@MODEL=$(_extract_env OLLAMA_MODEL); \
-	if [ -z "$$MODEL" ]; then MODEL=mistral-small; fi; \
+	if [ -z "$$MODEL" ]; then MODEL=qwen3-coder:30b; fi; \
 	echo "Pulling Ollama model: $$MODEL"; \
 	docker compose exec ollama ollama pull "$$MODEL"
-
-pull-model: model
 
 init: _check_env_file up build
 	@echo ""
@@ -62,14 +56,11 @@ init: _check_env_file up build
 # Pull model silently (with fallback) unless already pulled
 _quiet_model:
 	@MODEL=$(_extract_env OLLAMA_MODEL); \
-	if [ -z "$$MODEL" ]; then MODEL=mistral-small; fi; \
+	if [ -z "$$MODEL" ]; then MODEL=qwen3-coder:30b; fi; \
 	if ! docker compose exec ollama ollama list 2>/dev/null | grep -qw "$$MODEL"; then \
 		docker compose exec ollama ollama pull "$$MODEL" > /dev/null 2>&1 && \
 		echo "Model $$MODEL pulled." || echo "Warning: failed to pull model."; \
 	fi
-
-setup: init
-	@echo "(alias for 'init')"
 
 # Check that .env exists (internal use only)
 _check_env_file:
@@ -82,9 +73,6 @@ _check_env_file:
 agent: up # Launch OpenCode TUI inside agent container
 	@echo "Launching OpenCode TUI..."
 	docker compose exec agent /bin/bash -lc "exec opencode"
-
-shell: up # Drop into agent shell
-	docker compose exec agent /bin/bash
 
 ollama: up # Enter the ollama container
 	docker compose exec ollama /bin/bash
@@ -99,7 +87,8 @@ attach-restart: # Restart agent and keep running opencode
 	@(docker compose ps -q agent | grep -q . && docker compose restart agent || true) > /dev/null 2>&1
 	docker compose exec agent sh -c 'while true; do opencode "${OPENCODE_MODE:-agentic}"; sleep 1; done'
 
-clean: down # Stop containers, keep volumes
-
 prune: # Remove everything (containers + volumes)
 	@docker compose down -v
+
+rebuild: # Rebuilds the images and start container in the background
+	@docker compose up -d --build
