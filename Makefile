@@ -103,4 +103,3 @@ clean: down # Stop containers, keep volumes
 
 prune: # Remove everything (containers + volumes)
 	@docker compose down -v
-	@docker volume prune -f
