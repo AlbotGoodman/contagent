@@ -41,6 +41,13 @@ services:
     tty: true
     depends_on:
       - ollama
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   ollama:
     image: ollama/ollama:latest
@@ -73,6 +80,13 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
   ollama-models:
