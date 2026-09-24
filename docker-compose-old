@@ -1,0 +1,97 @@
+services:
+  agent:
+    build: .
+    container_name: contagent-opencode
+    working_dir: /workspace
+    volumes:
+      - ./:/workspace:rw
+      - ollama-models:/root/.ollama:ro
+      - ./config:/home/superuser/.config/opencode:rw
+    
+    read_only: true
+    tmpfs:
+      - /tmp:size=512M,mode=1777,exec
+      - /run:size=10M,mode=1777
+      - /home/superuser/.local:size=100M,mode=1777
+      - /home/superuser/.config:size=100M,mode=1777
+      - /home/superuser/.cache:size=100M,mode=1777
+    
+    networks:
+      - agent-network
+    
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+    
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - OPENCODE_MODE=${OPENCODE_MODE}
+      - HOME=/home/superuser
+      - UV_SYSTEM_PYTHON=1
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+    
+    stdin_open: true
+    tty: true
+    depends_on:
+      - ollama
+    
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: contagent-ollama
+    # user: "${HOST_UID}:${HOST_GID}"  # never worked even though volume paths were updated to /home/superuser/.ollama
+    volumes:
+      - ollama-models:/root/.ollama:rw
+    
+    read_only: true
+    tmpfs:
+      - /tmp:size=100M,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    
+    networks:
+      - agent-network
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  ollama-models:
+    driver: local
+
+networks:
+  agent-network:
+    driver: bridge

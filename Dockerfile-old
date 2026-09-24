@@ -1,11 +1,10 @@
-FROM python:3.13-slim-bookworm
+# syntax=docker/dockerfile:1
+
+FROM python:3.13-slim-bookworm AS builder
 
 # Accept host UID and GID as build arguments
 ARG HOST_UID=1000
 ARG HOST_GID=1000
-
-# Create non-root user and group with host-provided IDs
-RUN groupadd -g ${HOST_GID} devgroup && useradd -u ${HOST_UID} -g devgroup -m -d /home/superuser superuser
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -27,8 +26,30 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh && \
     chmod 0755 /usr/local/bin/opencode && \
     rm -f /tmp/install-opencode.sh
 
-# Ensure temp directories exist for read-only mode
+# Create user and directories
+RUN groupadd -g ${HOST_GID} devgroup && useradd -u ${HOST_UID} -g devgroup -m -d /home/superuser superuser
 RUN mkdir -p /tmp /run && chmod 1777 /tmp /run
+
+# Set working directory
+WORKDIR /workspace
+USER superuser
+
+FROM python:3.13-slim-bookworm AS final
+
+# Accept host UID and GID as build arguments (same as builder)
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+
+# Copy necessary runtime files from builder
+COPY --from=builder /usr/local/bin/opencode /usr/local/bin/opencode
+COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+
+# Set up user and directories (same as in current Dockerfile)
+RUN groupadd -g ${HOST_GID} devgroup && useradd -u ${HOST_UID} -g devgroup -m -d /home/superuser superuser
+RUN mkdir -p /tmp /run && chmod 1777 /tmp /run
+
+# Preserve PATH environment variable from builder stage
+ENV PATH="/usr/local/bin:$PATH"
 
 # Set working directory
 WORKDIR /workspace
