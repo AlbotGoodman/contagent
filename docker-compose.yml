@@ -31,7 +31,7 @@ services:
           memory: 4G
     
     environment:
-      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_HOST=http://headroom-proxy:8787/v1  # ollama:11434
       - OPENCODE_MODE=${OPENCODE_MODE}
       - HOME=/home/superuser
       - UV_SYSTEM_PYTHON=1
@@ -41,6 +41,7 @@ services:
     tty: true
     depends_on:
       - ollama
+      - headroom-proxy
     
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
@@ -52,7 +53,7 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: contagent-ollama
-    # user: "${HOST_UID}:${HOST_GID}"
+    # user: "${HOST_UID}:${HOST_GID}"  # never worked even though volume paths were updated to /home/superuser/.ollama
     volumes:
       - ollama-models:/root/.ollama:rw
     
@@ -83,6 +84,28 @@ services:
     
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  headroom-proxy:
+    image: ghcr.io/headroomlabs-ai/headroom:latest
+    container_name: contagent-headroom
+    networks:
+      - agent-network
+    ports:
+      - "8787:8787"
+    environment:
+      - HEADROOM_UPSTREAM_URL=http://ollama:11434
+      - HEADROOM_PORT=8787
+      - HEADROOM_HOST=0.0.0.0
+      - HOME=/root
+    restart: unless-stopped
+    depends_on:
+      - ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
       interval: 30s
       timeout: 10s
       retries: 3
