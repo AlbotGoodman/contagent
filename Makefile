@@ -92,3 +92,6 @@ prune: # Remove everything (containers + volumes)
 
 rebuild: # Rebuilds the images and start container in the background
 	@docker compose up -d --build
+
+reboot: # Restart after making changes to the compose file
+	@docker compose down && docker compose up -d && docker compose exec agent /bin/bash -lc "exec opencode"
