@@ -12,6 +12,7 @@ Two containers work together:
 
 - **agent** — Runs [OpenCode](https://github.com/nicepkg/opencode), a terminal-based coding agent. It has read-only filesystem layers, dropped capabilities, and resource limits for security.
 - **ollama** — Serves a local LLM ([Ollama](https://ollama.com/)) so your code assistant works offline with zero API keys.
+- **headroom-proxy** — Automatically compresses context to reduce token usage by up to 90% without requiring any code changes or configuration.
 
 ## Prerequisites
 
@@ -67,6 +68,34 @@ make down       # Stop containers (your volumes are preserved)
 ## Configuration
 
 The `config/` directory holds OpenCode's configuration. It is mounted as a writable volume so your customizations persist across runs. Edit files in `config/` while the containers are stopped or after exiting the TUI.
+
+## Headroom Context Compression
+
+Contagent now includes automatic context compression via Headroom to optimize token usage:
+
+### Automatic Activation
+
+Headroom works automatically from the moment you start the agent - no configuration or toggling required:
+- The proxy service starts alongside other containers
+- OpenCode automatically routes requests through the proxy for compression
+- All tool outputs are compressed transparently without any code changes
+
+### How It Works
+
+Headroom automatically detects content types and compresses tool outputs, search results, logs, and other repetitive data without losing crucial information. This significantly reduces token usage and costs while maintaining model performance.
+
+The compression happens transparently:
+- Tool outputs are compressed when they exceed size thresholds  
+- The proxy maintains state for cache-efficient compression
+- No code changes needed - OpenCode automatically uses the proxy
+
+### Benefits
+
+- Reduces token usage by up to 90% 
+- Improves response times
+- Lower computational costs
+- Maintains full backward compatibility
+- Works seamlessly with existing workflows
 
 ## Security Highlights
 
