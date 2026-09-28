@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1
 
+#########################################
 FROM python:3.13-slim-bookworm AS builder
+#########################################
 
 # Accept host UID and GID as build arguments
 ARG HOST_UID=1000
@@ -26,15 +28,18 @@ RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh && \
     chmod 0755 /usr/local/bin/opencode && \
     rm -f /tmp/install-opencode.sh
 
-# Create user and directories
-RUN groupadd -g ${HOST_GID} devgroup && useradd -u ${HOST_UID} -g devgroup -m -d /home/superuser superuser
-RUN mkdir -p /tmp /run && chmod 1777 /tmp /run
+# # Create user and directories
+# RUN groupadd -g ${HOST_GID} devgroup && useradd -u ${HOST_UID} -g devgroup -m -d /home/superuser superuser
+# RUN mkdir -p /tmp /run && chmod 1777 /tmp /run
 
-# Set working directory
-WORKDIR /workspace
-USER superuser
+# # Set working directory
+# WORKDIR /workspace
+# USER superuser
 
+
+#######################################
 FROM python:3.13-slim-bookworm AS final
+#######################################
 
 # Accept host UID and GID as build arguments (same as builder)
 ARG HOST_UID=1000
@@ -43,6 +48,9 @@ ARG HOST_GID=1000
 # Copy necessary runtime files from builder
 COPY --from=builder /usr/local/bin/opencode /usr/local/bin/opencode
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uv
+
+# Copy CA certificates from builder to enable HTTPS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Set up user and directories (same as in current Dockerfile)
 RUN groupadd -g ${HOST_GID} devgroup && useradd -u ${HOST_UID} -g devgroup -m -d /home/superuser superuser

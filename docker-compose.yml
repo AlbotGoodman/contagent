@@ -1,5 +1,5 @@
 services:
-  agent:
+  opencode:
     build: .
     container_name: contagent-opencode
     working_dir: /workspace
@@ -36,11 +36,15 @@ services:
       - HOME=/home/superuser
       - UV_SYSTEM_PYTHON=1
       - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - OPENAI_BASE_URL=http://headroom:8787/v1
     
     stdin_open: true
     tty: true
-    depends_on:
-      - ollama
+    depends_on:      
+      ollama:        
+        condition: service_started      
+      headroom:        
+        condition: service_started
     
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
@@ -81,14 +85,72 @@ services:
               capabilities: [gpu]
     
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:11434/api/tags || exit 1"]  # ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 60s
 
+  headroom:
+    image: ghcr.io/headroomlabs-ai/headroom:latest
+    container_name: contagent-headroom
+    
+    volumes:
+      - headroom-data:/tmp/headroom-home/.headroom:rw
+    
+    read_only: true
+    
+    tmpfs:
+      - /tmp:size=256M,mode=1777,exec
+      - /run:size=10M,mode=1777
+      - /tmp/headroom-home:size=100M,mode=1777
+    
+    security_opt:
+      - no-new-privileges:true
+    
+    cap_drop:
+      - ALL
+    
+    environment:
+      - HEADROOM_HOST=0.0.0.0
+      - HEADROOM_PORT=8787
+      - HEADROOM_MODE=cache
+      - HOME=/tmp/headroom-home
+      - HEADROOM_WORKSPACE_DIR=/tmp/headroom-home/.headroom
+      - HEADROOM_CONFIG_DIR=/tmp/headroom-home/.headroom/config
+      - HEADROOM_BACKEND=anyllm  # test
+      - HEADROOM_ANYLLM_PROVIDER=ollama  # test
+      - HEADROOM_ANYLLM_API_BASE=http://ollama:11434  # test
+    
+    networks:
+      - agent-network
+    
+    ports:
+      - "127.0.0.1:8787:8787"
+    
+    restart: unless-stopped
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+    
+    depends_on:
+      ollama:
+        condition: service_started
+    
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8787/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
 volumes:
   ollama-models:
+    driver: local
+  headroom-data:
     driver: local
 
 networks:
