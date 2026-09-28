@@ -46,12 +46,12 @@ services:
       headroom:        
         condition: service_started
     
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    # healthcheck:
+    #   test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
+    #   interval: 30s
+    #   timeout: 10s
+    #   retries: 3
+    #   start_period: 60s
 
   ollama:
     image: ollama/ollama:latest
