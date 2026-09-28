@@ -65,7 +65,7 @@ _check_env_file: # Check that .env exists (internal use only)
 
 contagent: # Launch OpenCode TUI inside agent container
 	@echo "Launching OpenCode TUI..."
-	docker compose exec agent /bin/bash -lc "exec opencode"
+	docker compose exec opencode /bin/bash -lc "exec opencode"
 
 opencode: # Enter the opencode container
 	docker compose exec opencode /bin/bash
