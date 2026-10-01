@@ -8,11 +8,16 @@ A hardened, Docker-based environment for AI-assisted coding with OpenCode and Ol
 
 ## Architecture
 
-Two containers work together:
+Three containers work together. Every model request is routed through Headroom:
 
-- **agent** — Runs [OpenCode](https://github.com/nicepkg/opencode), a terminal-based coding agent. It has read-only filesystem layers, dropped capabilities, and resource limits for security.
+```
+opencode ──► headroom ──► ollama
+           :8787/v1      :8787        :11434
+```
+
+- **opencode** — Runs [OpenCode](https://github.com/anomalyco/opencode), a terminal-based coding agent. It has read-only filesystem layers, dropped capabilities, and resource limits for security.
+- **headroom** — A context compression proxy sitting between the agent and the model. It compresses tool output, logs and prose before those tokens reach the LLM, then forwards the request upstream. It runs entirely on your machine.
 - **ollama** — Serves a local LLM ([Ollama](https://ollama.com/)) so your code assistant works offline with zero API keys.
-- **headroom-proxy** — Automatically compresses context to reduce token usage by up to 90% without requiring any code changes or configuration.
 
 ## Prerequisites
 
@@ -34,16 +39,18 @@ cp .env.example .env
 # 3. Build, start containers, and pull your model
 make init
 
-make agent
+make contagent
 
-# 4b. Or open a bash shell inside the agent container
-make shell
+# 4b. Or open a bash shell inside the opencode container
+make opencode
 
 Ctrl + D        # Exit the TUI or shell
 make down       # Stop containers (your volumes are preserved)
 ```
 
 > **Pick a model:** Set `OLLAMA_MODEL` in `.env` before running `make init`. Run `docker compose exec ollama ollama list` to see which models you've already downloaded, or browse [ollama.com/library](https://ollama.com/library) for available options.
+>
+> **Set the context length too:** `OLLAMA_CONTEXT_LENGTH` in `.env` must match `limit.context` in `config/opencode.json`. OpenCode trusts that number when deciding how much room is left before it compacts, so if the two disagree the agent either compacts far too early or overflows the real window.
 
 ## Command Reference
 
@@ -55,15 +62,16 @@ make down       # Stop containers (your volumes are preserved)
 | `make up` | Start containers in the background |
 | `make down` | Stop and remove containers |
 | `make init` | Build, start, and pull the model (full setup) |
-| `make run` | One-liner: `init` + launch OpenCode |
+| `make model` | Pull the Ollama model named in `.env` |
 | **Interact** | |
-| `make agent` | Launch the OpenCode coding agent TUI |
-| `make shell` | Open a bash shell inside the agent container |
+| `make contagent` | Launch the OpenCode coding agent TUI |
+| `make opencode` | Open a bash shell inside the opencode container |
 | `make ollama` | Open a bash shell inside the Ollama container |
 | `make logs` | Follow container logs in real-time |
 | **Maintenance** | |
-| `make clean` | Stop containers (keeps your data) |
-| `make prune` | Remove everything — containers, volumes, and cached images |
+| `make rebuild` | Rebuild images after Dockerfile changes and restart |
+| `make reboot` | Restart after docker-compose.yml changes |
+| `make prune` | Remove everything — containers, volumes, and cached models |
 
 ## Configuration
 
@@ -71,31 +79,38 @@ The `config/` directory holds OpenCode's configuration. It is mounted as a writa
 
 ## Headroom Context Compression
 
-Contagent now includes automatic context compression via Headroom to optimize token usage:
+[Headroom](https://github.com/headroomlabs-ai/headroom) is a context compression proxy. The agent's requests pass through it, tool outputs and logs are compressed before the tokens reach the model, and the request is then forwarded to Ollama. No code changes are needed in your project.
 
-### Automatic Activation
+### How it is wired
 
-Headroom works automatically from the moment you start the agent - no configuration or toggling required:
-- The proxy service starts alongside other containers
-- OpenCode automatically routes requests through the proxy for compression
-- All tool outputs are compressed transparently without any code changes
+OpenCode is pointed at Headroom rather than at Ollama directly. The provider block in `config/opencode.json` sets `baseURL` to `http://headroom:8787/v1`, and the `headroom` service in `docker-compose.yml` is told where to forward to via `OPENAI_TARGET_API_URL=http://ollama:11434/v1`. That `/v1` suffix is required — it is Ollama's OpenAI-compatible endpoint.
 
-### How It Works
+### What actually gets compressed
 
-Headroom automatically detects content types and compresses tool outputs, search results, logs, and other repetitive data without losing crucial information. This significantly reduces token usage and costs while maintaining model performance.
+Headroom detects the content type of each block and picks a compressor:
 
-The compression happens transparently:
-- Tool outputs are compressed when they exceed size thresholds  
-- The proxy maintains state for cache-efficient compression
-- No code changes needed - OpenCode automatically uses the proxy
+| Content type | Compressor |
+|---|---|
+| JSON | Statistical crushing — keeps errors and anomalies, drops repetition |
+| Source code | AST-aware — keeps signatures, collapses bodies |
+| Prose, logs, diffs | Kompress, a ModernBERT model scoring each token for retention |
 
-### Benefits
+### Kompress runs on CPU, without PyTorch
 
-- Reduces token usage by up to 90% 
-- Improves response times
-- Lower computational costs
-- Maintains full backward compatibility
-- Works seamlessly with existing workflows
+Kompress has two interchangeable engines: ONNX Runtime (CPU) and PyTorch. The published image ships ONNX via the `proxy` extra and does **not** include PyTorch, so `HEADROOM_KOMPRESS_BACKEND=onnx_cpu` is pinned explicitly in `docker-compose.yml`. Pinning matters because Headroom lazily loads the engine on first use, and a broken or slow torch install can stall every request.
+
+Two things follow from this, and they are the most common source of confusion:
+
+- **The first request is slow.** The Kompress weights (~840 MB, pulled from HuggingFace across two separate repositories) download on first use. They are cached in the `headroom-models` volume so this happens once rather than on every restart. Watch `docker compose logs headroom` on the very first run.
+- **Tiny prompts show 0% savings.** Kompress passes messages under roughly ten words through untouched. Savings only appear on context-heavy turns.
+
+Expect meaningfully smaller reductions than Headroom's headline figures. Those numbers are dominated by JSON, which a coding agent produces less of than a data pipeline does. On representative coding traffic the maintainers report roughly 28%.
+
+To run the structural compressors only and skip Kompress entirely, add `HEADROOM_DISABLE_KOMPRESS=1` to the `headroom` service.
+
+### A note on `apiKey` in the config
+
+`config/opencode.json` contains `"apiKey": "unused"`. This is a deliberate placeholder, not a secret. OpenCode refuses to dispatch a request against a custom provider unless it can resolve a credential, and the usual source — `auth.json` — lives under `/home/superuser/.local`, which is a tmpfs here and therefore wiped on every restart. Headroom ignores the inbound `Authorization` header when routing, and Ollama does not authenticate. Removing the line brings back the `missing API key` error.
 
 ## Security Highlights
 
@@ -104,15 +119,19 @@ The compression happens transparently:
 - All Linux capabilities dropped (`cap_drop: ALL`)
 - No privilege escalation allowed
 - Resource limits: 2 CPUs, 4 GB RAM per container
+- Ollama's published port is bound to `127.0.0.1` only
+- No prompt, file content or conversation state is persisted between restarts
 
 ## Threat Model
 
 Contagent hardens the **runtime** environment — if an agent or a dependency escapes its sandbox, the damage surface is narrow. However, some risks are inherent to the design and cannot be mitigated without changing what this tool does:
 
 - **Code execution is the point.** The agent runs arbitrary code (shell commands, scripts, package installs) inside the agent container with access to your workspace files via a volume mount. A compromised model or malicious command can modify or exfiltrate host data that is bind-mounted into the container.
-- **Host port exposure.** The Ollama port `11434` is exposed on all interfaces. Anyone who reaches it can infer prompts, read model outputs, and potentially influence the agent's behavior. Consider firewalling this port to your local network only.
-- **Shared volume persistence.** Models stored in the `ollama-models` Docker volume survive `make prune`. If you decommission or share this machine, manually remove the volume (`docker volume rm contagent_ollama-models`) to wipe downloaded models.
-- **Resource exhaustion (GPU).** Running large models alongside the agent can fill GPU VRAM, causing OOM kills that corrupt model state. Monitor your GPU usage and keep a headroom of 2–4 GB free.
+- **Host port exposure.** Ollama's port `11434` and Headroom's port `8787` are both bound to `127.0.0.1`, so they are reachable only from this machine. Keep it that way — anyone who reaches the proxy can infer prompts, read model output, and influence the agent's behavior.
+- **The headroom service runs as root.** The published Headroom image declares `USER=root` and this setup does not override it, so that container has more privilege than the agent container. It holds no secrets and no persistent user data, but it does hold a writable model cache.
+- **Egress on first run.** The Kompress weights are fetched from `huggingface.co` the first time the proxy compresses something. Afterwards the cache is warm and nothing further is downloaded. To guarantee no egress at all, run it once, then add `HF_HUB_OFFLINE=1` to the `headroom` service.
+- **Shared volume persistence.** `make prune` removes all volumes, including `ollama-models` (your downloaded models) and `headroom-models` (the Kompress weights) — expect a long re-pull afterwards. Neither volume contains prompts or file content; all conversation state lives on a tmpfs and is already gone by then.
+- **Resource exhaustion (GPU).** Running large models alongside the agent can fill GPU VRAM, causing OOM kills that corrupt model state. Monitor your GPU usage and keep a headroom of 2–4 GB free. Headroom's CPU inference adds load on top of this.
 
 ## License
 
