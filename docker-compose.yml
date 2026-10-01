@@ -1,11 +1,17 @@
 services:
   opencode:
-    build: .
+    build:
+      context: .
+      args:
+        # A Dockerfile cannot read .env, so the values arrive as build args here.
+        # Without this the ARGs in the Dockerfile silently fall back to 1000 and
+        # every bind-mounted file ends up owned by the wrong user.
+        HOST_UID: ${HOST_UID}
+        HOST_GID: ${HOST_GID}
     container_name: contagent-opencode
     working_dir: /workspace
     volumes:
       - ./:/workspace:rw
-      - ollama-models:/root/.ollama:ro
       - ./config:/home/superuser/.config/opencode:rw
     
     read_only: true
@@ -37,21 +43,15 @@ services:
       - UV_SYSTEM_PYTHON=1
       - OLLAMA_MODEL=${OLLAMA_MODEL}
       - OPENAI_BASE_URL=http://headroom:8787/v1
+      - OPENAI_API_KEY=unused
     
     stdin_open: true
     tty: true
-    depends_on:      
-      ollama:        
-        condition: service_started      
-      headroom:        
+    depends_on:
+      ollama:
         condition: service_started
-    
-    # healthcheck:
-    #   test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
-    #   interval: 30s
-    #   timeout: 10s
-    #   retries: 3
-    #   start_period: 60s
+      headroom:
+        condition: service_healthy
 
   ollama:
     image: ollama/ollama:latest
@@ -70,8 +70,14 @@ services:
     networks:
       - agent-network
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     restart: unless-stopped
+
+    environment:
+      # Must stay in sync with limit.context in config/opencode.json. OpenCode
+      # uses that number to decide when to compact; if it overestimates the real
+      # window, compaction fires too late and the request overflows.
+      - OLLAMA_CONTEXT_LENGTH=${OLLAMA_CONTEXT_LENGTH}
     
     deploy:
       resources:
@@ -96,12 +102,21 @@ services:
     container_name: contagent-headroom
     
     volumes:
-      - headroom-data:/tmp/headroom-home/.headroom:rw
+      # Kompress-v2-base plus the ModernBERT tokenizer, pulled from HuggingFace
+      # on first use (~840 MB, two separate repos). These are immutable
+      # third-party model weights, not user data, so they are the only thing
+      # persisted. Everything under /tmp/headroom-home -- the CCR store of
+      # compressed originals, the savings log and stats -- stays on tmpfs and is
+      # discarded on restart, so no prompt or file content ever survives.
+      - headroom-models:/headroom-cache
     
     read_only: true
     
     tmpfs:
-      - /tmp:size=256M,mode=1777,exec
+      # Sized to absorb HuggingFace download staging if it does not write
+      # straight into HF_HOME. The ~840 MB Kompress payload itself lands on the
+      # headroom-models volume, not here.
+      - /tmp:size=512M,mode=1777,exec
       - /run:size=10M,mode=1777
       - /tmp/headroom-home:size=100M,mode=1777
     
@@ -112,15 +127,32 @@ services:
       - ALL
     
     environment:
+      - HOME=/tmp/headroom-home
       - HEADROOM_HOST=0.0.0.0
       - HEADROOM_PORT=8787
       - HEADROOM_MODE=cache
-      - HOME=/tmp/headroom-home
+      # HEADROOM_MODE is a real tradeoff, not a default to leave alone. "cache"
+      # freezes prior turns byte-identical to protect Ollama's prefix cache, which
+      # costs less on repeat requests. "token" compresses harder and should save
+      # more overall when you are optimising for tokens rather than latency.
+      # Try "token" once you have working savings figures to compare against.
       - HEADROOM_WORKSPACE_DIR=/tmp/headroom-home/.headroom
       - HEADROOM_CONFIG_DIR=/tmp/headroom-home/.headroom/config
-      - HEADROOM_BACKEND=anyllm  # test
-      - HEADROOM_ANYLLM_PROVIDER=ollama  # test
-      - HEADROOM_ANYLLM_API_BASE=http://ollama:11434  # test
+      # Kompress on ONNX CPU. The image ships onnxruntime via the [proxy] extra
+      # but no torch, so "auto" resolves to onnx_cpu anyway -- pin it so a future
+      # torch install cannot trigger the lazy torch load that hangs requests.
+      - HEADROOM_KOMPRESS_BACKEND=onnx_cpu
+      # OpenCode speaks the OpenAI wire format, so it travels Headroom's
+      # /v1/chat/completions route. These two vars aim that route at Ollama's
+      # OpenAI-compatible endpoint (note the required /v1 suffix). The key is a
+      # placeholder: Ollama does not authenticate, but Headroom will not forward
+      # upstream without a non-empty credential. No ANYLLM_* vars here on purpose
+      # -- that backend needs the any-llm-sdk package, which is not in the image.
+      - OPENAI_TARGET_API_URL=http://ollama:11434/v1
+      - OPENAI_API_KEY=unused
+      # Where the HuggingFace Kompress weights are cached. Pointed at the volume
+      # below so the ~840 MB download happens once, not on every restart.
+      - HF_HOME=/headroom-cache
     
     networks:
       - agent-network
@@ -150,7 +182,7 @@ services:
 volumes:
   ollama-models:
     driver: local
-  headroom-data:
+  headroom-models:
     driver: local
 
 networks:

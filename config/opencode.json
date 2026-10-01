@@ -1,16 +1,33 @@
+// Contagent routes every request through the Headroom proxy, which then
+// forwards to Ollama. See docker-compose.yml for the service wiring.
+//
+// NOTE on "apiKey": the value is a deliberate placeholder, not a real secret.
+// OpenCode refuses to start a request against a custom provider unless it can
+// resolve a credential -- from options.apiKey or from auth.json. The auth.json
+// path lives under /home/superuser/.local, which is a tmpfs in this setup and
+// therefore wiped on every container restart, so /connect is not a viable
+// source of credentials here. Headroom ignores the inbound Authorization
+// header when routing, and Ollama's OpenAI-compatible endpoint ignores it
+// entirely. Do not "fix" this by removing the line -- the agent will fail with
+// "missing API key".
 {
   "$schema": "https://opencode.ai/config.json",
   "model": "ollama/{env:OLLAMA_MODEL}",
   "provider": {
     "ollama": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama",
+      "name": "Ollama (via Headroom)",
       "options": {
-        "baseURL": "http://headroom:8787/v1"
+        "baseURL": "http://headroom:8787/v1",
+        "apiKey": "unused"
       },
       "models": {
         "{env:OLLAMA_MODEL}": {
-          "name": "{env:OLLAMA_MODEL}"
+          "name": "{env:OLLAMA_MODEL}",
+          "limit": {
+            "context": 131072,
+            "output": 32768
+          }
         }
       }
     }
