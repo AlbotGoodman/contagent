@@ -1,4 +1,4 @@
-.PHONY: build up down shell agent ollama model pull-model init run clean prune help logs attach-restart _check_env_file
+.PHONY: build up down model init contagent opencode ollama logs prune rebuild reboot help _check_env_file _quiet_model
 
 .DEFAULT_GOAL := help
 
@@ -41,8 +41,10 @@ up: # Start containers in background
 down: # Stop and remove containers
 	docker compose down
 
-model: 
-	_check_env_file
+model: # Pull Ollama model from .env
+	_check_env_file _quiet_model
+
+_quiet_model: # Pull the configured Ollama model (internal use only)
 	@MODEL=$(_extract_env OLLAMA_MODEL); \
 	if [ -z "$$MODEL" ]; then MODEL=qwen3-coder:30b; fi; \
 	echo "Pulling Ollama model: $$MODEL"; \
@@ -83,4 +85,4 @@ rebuild: # Rebuilds the images and start container in the background
 	@docker compose up -d --build
 
 reboot: # Restart after making changes to the compose file
-	@docker compose down && docker compose up -d && docker compose exec agent /bin/bash -lc "exec opencode"
+	@docker compose down && docker compose up -d && docker compose exec opencode /bin/bash -lc "exec opencode"
