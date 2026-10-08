@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1
+
+FROM ghcr.io/headroomlabs-ai/headroom:latest
+
+USER root
+
+# Explicitly create the nonroot user if it doesn't exist
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+RUN groupadd -g ${HOST_GID} nonroot || true && \
+    useradd -u ${HOST_UID} -g ${HOST_GID} -m nonroot || true
+
+# Now pip install
+RUN python -m pip install --no-cache-dir \
+    "torch>=2.12.1" \
+    "transformers>=5.5.0,<6.0" \
+    "huggingface-hub>=1.5.0,<2.0"
+
+# Now chown safely (user definitely exists)
+RUN mkdir -p /headroom-cache && chown nonroot:nonroot /headroom-cache
+
+USER nonroot
+
+
+##############################
+# below is the og code from big pickle
+##############################
+
+
+# # syntax=docker/dockerfile:1
+# #
+# # Headroom image with the PyTorch (CUDA) Kompress backend.
+# #
+# # The published image (ghcr.io/headroomlabs-ai/headroom) ships only the ONNX
+# # CPU backend via the [proxy] extra. This derived image adds the upstream [ml]
+# # extra so HEADROOM_KOMPRESS_BACKEND=pytorch can run ModernBERT on the GPU.
+# # See README.md ("Kompress runs on the GPU") for the wiring.
+
+# FROM ghcr.io/headroomlabs-ai/headroom:latest
+
+# # The base image runs as nonroot; pip needs root to write system site-packages.
+# USER root
+
+# # Mirrors the upstream [ml] extra (pyproject.toml) without reinstalling
+# # headroom-ai itself, so the version baked into the base image is untouched.
+# # PyPI's Linux torch wheels are CUDA-enabled: the driver libraries are
+# # injected at runtime by nvidia-container-toolkit, not baked in here.
+# RUN python -m pip install --no-cache-dir \
+#     "torch>=2.12.1" \
+#     "transformers>=5.5.0,<6.0" \
+#     "huggingface-hub>=1.5.0,<2.0"
+
+# # HF_HOME (/headroom-cache) is a named volume whose mountpoint does not exist
+# # in the base image, so Docker creates it root:root and the nonroot proxy
+# # process could never write the Kompress weights into it. Declaring and
+# # chowning the directory here makes Docker seed the volume with this
+# # ownership on first mount. Existing volumes keep their old ownership and
+# # must be recreated once (docker volume rm) or chowned from a root shell.
+# RUN mkdir -p /headroom-cache && chown nonroot:nonroot /headroom-cache
+
+# USER nonroot

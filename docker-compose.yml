@@ -43,7 +43,8 @@ services:
       - UV_SYSTEM_PYTHON=1
       - OLLAMA_MODEL=${OLLAMA_MODEL}
       - OPENAI_BASE_URL=http://headroom:8787/v1
-      - OPENAI_API_KEY=unused
+      # - OPENAI_API_KEY=unused
+      - OPENAI_API_KEY=${HEADROOM_PROXY_TOKEN}  # testing for bind error
     
     stdin_open: true
     tty: true
@@ -98,12 +99,19 @@ services:
       start_period: 60s
 
   headroom:
-    image: ghcr.io/headroomlabs-ai/headroom:latest
+    # Derived from the published image: Dockerfile.headroom adds torch so the
+    # PyTorch (CUDA) Kompress backend can run on the GPU. The service name
+    # stays "headroom" so logs, healthchecks and README commands are unchanged.
+    image: contagent-headroom:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.headroom
     container_name: contagent-headroom
     
     volumes:
       # Kompress-v2-base plus the ModernBERT tokenizer, pulled from HuggingFace
-      # on first use (~840 MB, two separate repos). These are immutable
+      # on first use. The pytorch backend fetches model.safetensors (the ONNX
+      # graph is a different file and is not needed). These are immutable
       # third-party model weights, not user data, so they are the only thing
       # persisted. Everything under /tmp/headroom-home -- the CCR store of
       # compressed originals, the savings log and stats -- stays on tmpfs and is
@@ -114,7 +122,7 @@ services:
     
     tmpfs:
       # Sized to absorb HuggingFace download staging if it does not write
-      # straight into HF_HOME. The ~840 MB Kompress payload itself lands on the
+      # straight into HF_HOME. The Kompress payload itself lands on the
       # headroom-models volume, not here.
       - /tmp:size=512M,mode=1777,exec
       - /run:size=10M,mode=1777
@@ -138,10 +146,14 @@ services:
       # Try "token" once you have working savings figures to compare against.
       - HEADROOM_WORKSPACE_DIR=/tmp/headroom-home/.headroom
       - HEADROOM_CONFIG_DIR=/tmp/headroom-home/.headroom/config
-      # Kompress on ONNX CPU. The image ships onnxruntime via the [proxy] extra
-      # but no torch, so "auto" resolves to onnx_cpu anyway -- pin it so a future
-      # torch install cannot trigger the lazy torch load that hangs requests.
-      - HEADROOM_KOMPRESS_BACKEND=onnx_cpu
+      # Kompress on PyTorch/CUDA. The image built from Dockerfile.headroom
+      # ships torch via the [ml] extra, and device=auto resolves to cuda once
+      # the GPU reservation below makes the card visible. Must stay forced:
+      # "auto" always tries ONNX first and would never reach torch, and an
+      # unrecognized value silently falls back to "auto". If CUDA ever fails
+      # (e.g. VRAM pressure from Ollama), flip this back to onnx_cpu -- the
+      # ONNX runtime is still installed in the image.
+      - HEADROOM_KOMPRESS_BACKEND=pytorch
       # OpenCode speaks the OpenAI wire format, so it travels Headroom's
       # /v1/chat/completions route. These two vars aim that route at Ollama's
       # OpenAI-compatible endpoint (note the required /v1 suffix). The key is a
@@ -151,8 +163,11 @@ services:
       - OPENAI_TARGET_API_URL=http://ollama:11434/v1
       - OPENAI_API_KEY=unused
       # Where the HuggingFace Kompress weights are cached. Pointed at the volume
-      # below so the ~840 MB download happens once, not on every restart.
+      # below so the several-hundred-MB download happens once, not on every
+      # restart. Ownership of this directory is set in Dockerfile.headroom so
+      # the nonroot proxy can write into it.
       - HF_HOME=/headroom-cache
+      - HEADROOM_PROXY_TOKEN=${HEADROOM_PROXY_TOKEN}  # testing for bind error
     
     networks:
       - agent-network
@@ -166,7 +181,15 @@ services:
       resources:
         limits:
           cpus: '1'
-          memory: 2G
+          memory: 4G
+        reservations:
+          # Same nvidia block as the ollama service: both containers share the
+          # single card. Kompress (PyTorch/CUDA) needs this to see the GPU;
+          # without it device=auto falls back to CPU inference silently.
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     
     depends_on:
       ollama:

@@ -1,4 +1,4 @@
-.PHONY: build up down model init contagent opencode ollama logs prune rebuild reboot help _check_env_file _quiet_model
+.PHONY: build up down model init contagent opencode ollama headroom logs prune rebuild reboot help _check_env_file _quiet_model
 
 .DEFAULT_GOAL := help
 
@@ -26,6 +26,7 @@ help: # Show this help message
 	@echo "Container access:"
 	@echo "  make opencode   	   Launch OpenCode container (bash)"
 	@echo "  make ollama   		   Enter Ollama container (bash)"
+	@echo "  make headroom   	   Enter Headroom container (bash)"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make prune    		   Remove everything (containers + volumes)"
@@ -74,6 +75,9 @@ opencode: # Enter the opencode container
 
 ollama: # Enter the ollama container
 	docker compose exec ollama /bin/bash
+
+headroom: # Enter the headroom container (bash)
+	docker compose exec headroom /bin/bash
 
 logs: # Follow logs for all services
 	docker compose logs -f --tail=100

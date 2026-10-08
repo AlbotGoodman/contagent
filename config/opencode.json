@@ -19,7 +19,10 @@
       "name": "Ollama (via Headroom)",
       "options": {
         "baseURL": "http://headroom:8787/v1",
-        "apiKey": "unused"
+        "apiKey": "unused",
+        "headers": {
+          "Authorization": "Bearer {env:HEADROOM_PROXY_TOKEN}"  // or "X-Headroom-Proxy-Token": "{env:HEADROOM_PROXY_TOKEN}"
+        }
       },
       "models": {
         "{env:OLLAMA_MODEL}": {
