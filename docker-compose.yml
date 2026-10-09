@@ -1,11 +1,14 @@
 services:
-  agent:
-    build: .
+  opencode:
+    build:
+      context: .
+      args:
+        HOST_UID: ${HOST_UID}
+        HOST_GID: ${HOST_GID}
     container_name: contagent-opencode
     working_dir: /workspace
     volumes:
       - ./:/workspace:rw
-      - ollama-models:/root/.ollama:ro
       - ./config:/home/superuser/.config/opencode:rw
     
     read_only: true
@@ -40,14 +43,8 @@ services:
     stdin_open: true
     tty: true
     depends_on:
-      - ollama
-    
-    healthcheck:
-      test: ["CMD-SHELL", "pgrep -f 'opencode' > /dev/null"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      ollama:
+        condition: service_started
 
   ollama:
     image: ollama/ollama:latest
@@ -66,7 +63,7 @@ services:
     networks:
       - agent-network
     ports:
-      - "11434:11434"
+      - "127.0.0.1:11434:11434"
     restart: unless-stopped
     
     deploy:
@@ -81,7 +78,7 @@ services:
               capabilities: [gpu]
     
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/tags || exit 1"]
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
