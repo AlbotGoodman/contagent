@@ -1,19 +1,41 @@
-# Contagent — AGENTS.md
+# AGENTS.md
 
-This repo is a Docker template/scaffold, not an application. All source files are infra: `Dockerfile`, `docker-compose.yml`, the Makefile, and `config/opencode.json`. Treat everything else (`.env`, README, PLAN.md) as documentation.
+## What this repo is
+Infrastructure repo (Docker Compose + Makefile), **not** an application. It defines
+`contagent`: two containers — `opencode` (the coding agent) and `ollama` (local GPU
+inference). There is no source tree, test suite, linter, or typechecker. Verification is
+done by running the stack.
 
-## Development conventions
-- **No scripts or app code.** If you add any shell scripts, put them in a `scripts/` directory — keep the root clean.
-- **Makefile targets are public API.** Every new feature needs a matching `make` target and a README line describing it. Follow the existing style: `.PHONY`, `_internal:` helpers, `$$(awk ...)` env extraction with `$$` escaping.
-- **docker-compose.yml is the architecture source of truth.** All service definitions, resource limits, volumes, networks, and port mappings live here. Changes to how containers interact (new services, new mounts, networking) go here.
-- **`.env.example` is a user contract.** Every variable it declares must exist for `make init` to work end-to-end. Document each one with a comment. Delete any that are no longer used.
-- **Config overrides:** `config/opencode.json` only configures the OpenCode provider (Ollama baseURL and model list). Never put runtime env var defaults here — `.env` and compose are the sources of truth.
+## Commands
+- `make` / `make help` — list all targets (default goal is `help`).
+- `make init` — the real setup: checks `.env`, builds the image, starts containers, pulls the model. Run this first.
+- `make contagent` — launch the OpenCode TUI (interactive; needs the stack already up).
+- `make opencode` / `make ollama` — shell into each container.
+- `make model` — pull the `OLLAMA_MODEL` from `.env`.
+- `make rebuild` — rebuild + restart (required after Dockerfile or `.env` UID/GID changes).
+- `make reboot` — restart after docker-compose changes.
+- `make prune` — `docker compose down -v`; **deletes the `ollama-models` volume and all downloaded models.**
+- `make logs` — tail all container logs.
 
-## Verification
-- After changing anything, run `make init` from scratch to verify end-to-end: clean start → containers running → model pulled → `docker compose exec agent opencode` usable.
-- After changing docker-compose.yml, run `docker compose config` to validate syntax.
-- After changing the Dockerfile, run `make build && make shell` to verify the container starts and `superuser` has correct permissions.
+## Setup requirements
+- `.env` is required and gitignored; create with `cp .env.example .env`.
+- NVIDIA GPU + Container Toolkit required; macOS is unsupported.
+- `HOST_UID`/`HOST_GID` are Docker build args baked into the image — changing them needs
+  `make rebuild`, not just a restart.
 
-## Gotchas
-- **`.env` is gitignored.** Agents shouldn't assume it exists during development — `.env.example` drives all work. If a new variable is needed, add it to both files.
-- **Plan.md contains Open Decision Points that block implementation** with Do-Not-Do rules. Read it before making changes.
+## Wiring facts an agent will otherwise miss
+- The repo root is bind-mounted to `/workspace` in the `opencode` container: the agent
+  edits the same files you see here, live.
+- `config/` is bind-mounted to `/home/superuser/.config/opencode`. `config/opencode.json`
+  is the live OpenCode config, not a template.
+- Inside containers Ollama is `http://ollama:11434` (see `config/opencode.json`); on the
+  host it is `127.0.0.1:11434` (loopback only — keep it that way).
+- The `opencode` container runs as non-root with a read-only root filesystem plus tmpfs;
+  only `/workspace` and `config/` persist.
+
+## Repo conventions
+- `TODO.md`, `PLAN.md`, and `data/` are gitignored (session notes / backlog). `data/headroom.md`
+  is third-party Headroom docs for a planned feature — not project code.
+- Current working branch is `nano`; `master` is mainline; `headroom-proxy` is experimental.
+- Keep security posture in `docker-compose.yml` (`cap_drop: ALL`, `no-new-privileges`,
+  `read_only`, resource limits) intact unless the task is explicitly about it.

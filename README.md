@@ -1,119 +1,110 @@
 # Contagent
 
-> **Work in progress.** This project is not yet stable. Use it at your own risk and expect breaking changes.
+A hardened, Docker-based environment for AI-assisted coding using
+[OpenCode](https://opencode.ai) with a local [Ollama](https://ollama.com/) model on
+your own NVIDIA GPU. No cloud APIs and no API keys — inference stays on your machine.
 
-A hardened, Docker-based environment for AI-assisted coding with OpenCode and Ollama running locally on a GPU. All computation stays on your machine — no cloud APIs, no telemetry.
-
-> Only tested on **Linux** with an **NVIDIA RTX 4090**. Setup may require adjustment on other platforms.
+> Tested on Linux with an NVIDIA RTX 4090. An NVIDIA GPU is required; macOS is not
+> supported because Docker cannot pass a GPU through on Apple hardware.
 
 ## Architecture
 
-Two containers work together:
+Two containers work together on the `agent-network` bridge:
 
-- **agent** — Runs [OpenCode](https://github.com/nicepkg/opencode), a terminal-based coding agent. It has read-only filesystem layers, dropped capabilities, and resource limits for security.
-- **ollama** — Serves a local LLM ([Ollama](https://ollama.com/)) so your code assistant works offline with zero API keys.
-- **headroom-proxy** — Automatically compresses context to reduce token usage by up to 90% without requiring any code changes or configuration.
+| Service    | Container            | Role                                             |
+| ---------- | -------------------- | ------------------------------------------------ |
+| `opencode` | `contagent-opencode` | [OpenCode](https://opencode.ai) coding agent TUI |
+| `ollama`   | `contagent-ollama`   | Local LLM inference on the GPU                   |
 
-## Prerequisites
+Ollama is published only on `127.0.0.1:11434` (loopback), so it is reachable from the
+host but not from other machines on the network.
 
-- [Docker Engine](https://docs.docker.com/get-docker/) (with Docker Compose v2)
-- NVIDIA GPU (compute capability 5.0+)
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
-- 16+ GB RAM, 10 GB free disk space
-- Linux or macOS (Windows WSL2 also supported)
+### Mounts and volumes
+
+- `./` → `/workspace` (rw) — the project the agent edits
+- `./config` → `/home/superuser/.config/opencode` (rw) — OpenCode config, persists across runs
+- `ollama-models` volume → `/root/.ollama` — downloaded models
+
+## Requirements
+
+- [Docker Engine](https://docs.docker.com/get-docker/) with Docker Compose v2
+- An NVIDIA GPU (compute capability 5.0+) and the
+  [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+- ~16 GB RAM and ~25 GB free disk space
+- Linux with NVIDIA drivers
 
 ## Quick Start
 
 ```bash
 # 1. Clone and enter the repo
-git clone <your-repo-url> contagent && cd contagent
+git clone https://github.com/albotgoodman/contagent.git && cd contagent
 
 # 2. Set up your environment config
 cp .env.example .env
 
-# 3. Build, start containers, and pull your model
+# 3. Check .env, start the containers, and pull the model
 make init
 
-make agent
-
-# 4b. Or open a bash shell inside the agent container
-make shell
-
-Ctrl + D        # Exit the TUI or shell
-make down       # Stop containers (your volumes are preserved)
+# 4. Launch the OpenCode agent TUI
+make contagent
 ```
 
-> **Pick a model:** Set `OLLAMA_MODEL` in `.env` before running `make init`. Run `docker compose exec ollama ollama list` to see which models you've already downloaded, or browse [ollama.com/library](https://ollama.com/library) for available options.
+## Usage Guide
 
-## Command Reference
+Contagent is driven through Makefile commands:
 
-| Target | What it does |
-|---|---|
-| `make help` | Show all available commands |
-| **Setup** | |
-| `make build` | Build Docker images |
-| `make up` | Start containers in the background |
-| `make down` | Stop and remove containers |
-| `make init` | Build, start, and pull the model (full setup) |
-| `make run` | One-liner: `init` + launch OpenCode |
-| **Interact** | |
-| `make agent` | Launch the OpenCode coding agent TUI |
-| `make shell` | Open a bash shell inside the agent container |
-| `make ollama` | Open a bash shell inside the Ollama container |
-| `make logs` | Follow container logs in real-time |
-| **Maintenance** | |
-| `make clean` | Stop containers (keeps your data) |
-| `make prune` | Remove everything — containers, volumes, and cached images |
+1. Run `make help` to see all available commands
+2. Use `make init` to check `.env`, start the containers, and pull the model
+3. Run `make contagent` to launch the OpenCode TUI for coding tasks
+4. Use `make down` to stop containers when finished
+
+The `config/` directory holds OpenCode's configuration. It is mounted as a writable
+volume so your customizations persist across runs. Edit files in `config/` while the
+containers are stopped or after exiting the TUI.
 
 ## Configuration
 
-The `config/` directory holds OpenCode's configuration. It is mounted as a writable volume so your customizations persist across runs. Edit files in `config/` while the containers are stopped or after exiting the TUI.
+Copy `.env.example` to `.env` and adjust as needed:
 
-## Headroom Context Compression
-
-Contagent now includes automatic context compression via Headroom to optimize token usage:
-
-### Automatic Activation
-
-Headroom works automatically from the moment you start the agent - no configuration or toggling required:
-- The proxy service starts alongside other containers
-- OpenCode automatically routes requests through the proxy for compression
-- All tool outputs are compressed transparently without any code changes
-
-### How It Works
-
-Headroom automatically detects content types and compresses tool outputs, search results, logs, and other repetitive data without losing crucial information. This significantly reduces token usage and costs while maintaining model performance.
-
-The compression happens transparently:
-- Tool outputs are compressed when they exceed size thresholds  
-- The proxy maintains state for cache-efficient compression
-- No code changes needed - OpenCode automatically uses the proxy
-
-### Benefits
-
-- Reduces token usage by up to 90% 
-- Improves response times
-- Lower computational costs
-- Maintains full backward compatibility
-- Works seamlessly with existing workflows
+| Variable        | Default                  | Purpose                                       |
+| --------------- | ------------------------ | --------------------------------------------- |
+| `OLLAMA_MODEL`  | `qwen3-coder:30b`        | Model pulled by `make init` and used by OpenCode |
+| `OLLAMA_HOST`   | `http://localhost:11434` | Ollama endpoint (host side)                   |
+| `OPENCODE_MODE` | `agentic`                | Passed into the opencode container            |
+| `HOST_UID`      | `1000`                   | UID the container user runs as                |
+| `HOST_GID`      | `1000`                   | GID the container user runs as                |
 
 ## Security Highlights
 
 - Agent container runs as a non-root user
 - Read-only root filesystem with tmpfs for necessary temp directories
 - All Linux capabilities dropped (`cap_drop: ALL`)
-- No privilege escalation allowed
+- No privilege escalation allowed (`no-new-privileges:true`)
 - Resource limits: 2 CPUs, 4 GB RAM per container
 
 ## Threat Model
 
-Contagent hardens the **runtime** environment — if an agent or a dependency escapes its sandbox, the damage surface is narrow. However, some risks are inherent to the design and cannot be mitigated without changing what this tool does:
+Contagent hardens the **runtime** environment — if an agent or a dependency escapes
+its sandbox, the damage surface is narrow. However, some risks are inherent to the
+design and cannot be mitigated without changing what this tool does:
 
-- **Code execution is the point.** The agent runs arbitrary code (shell commands, scripts, package installs) inside the agent container with access to your workspace files via a volume mount. A compromised model or malicious command can modify or exfiltrate host data that is bind-mounted into the container.
-- **Host port exposure.** The Ollama port `11434` is exposed on all interfaces. Anyone who reaches it can infer prompts, read model outputs, and potentially influence the agent's behavior. Consider firewalling this port to your local network only.
-- **Shared volume persistence.** Models stored in the `ollama-models` Docker volume survive `make prune`. If you decommission or share this machine, manually remove the volume (`docker volume rm contagent_ollama-models`) to wipe downloaded models.
-- **Resource exhaustion (GPU).** Running large models alongside the agent can fill GPU VRAM, causing OOM kills that corrupt model state. Monitor your GPU usage and keep a headroom of 2–4 GB free.
+- **Code execution is the point.** The agent runs arbitrary code (shell commands,
+  scripts, package installs) inside the agent container with access to your workspace
+  files via a read-write bind mount. A compromised model or malicious command can
+  modify or exfiltrate host data that is bind-mounted into the container.
+- **Local-only Ollama port.** Ollama is bound to `127.0.0.1:11434`, so it is not
+  reachable from other hosts. Keep it that way — if you widen the binding, anyone who
+  reaches it can infer prompts and read model outputs.
+- **Shared volume persistence.** Models are stored in the `ollama-models` Docker
+  volume (`contagent_ollama-models`). `make prune` (`docker compose down -v`) deletes
+  this volume and wipes downloaded models. To reclaim space deliberately, run
+  `docker volume rm contagent_ollama-models`.
+- **Resource exhaustion (GPU).** Running large models alongside the agent can fill GPU
+  VRAM, causing OOM kills that corrupt model state. Monitor your GPU usage and keep a
+  headroom of 2–4 GB free.
+- **Model provenance.** The `ollama/ollama:latest` image is unpinned; pin a version if
+  you need reproducible setups.
 
 ## License
 
-MIT — see `LICENSE` for details.
+Released under the MIT License. See [LICENSE](LICENSE).
