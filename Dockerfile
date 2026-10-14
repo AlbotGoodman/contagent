@@ -4,10 +4,6 @@
 FROM python:3.13-slim-bookworm AS builder
 #########################################
 
-# Accept host UID and GID as build arguments
-ARG HOST_UID=1000
-ARG HOST_GID=1000
-
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
