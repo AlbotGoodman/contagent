@@ -1,5 +1,5 @@
-.PHONY: build up down model init contagent opencode ollama logs prune rebuild reboot \
-       help _check_env_file _quiet_model
+.PHONY: build up down model init contagent contagent-gvisor opencode ollama logs prune \
+       rebuild reboot audit help _check_env_file _quiet_model
 
 # Default target
 .DEFAULT_GOAL := help
@@ -20,6 +20,7 @@ help:                                   # Show this help message
 	@echo "Quick start:"
 	@echo "  make init                 Build, start, and pull model"
 	@echo "  make contagent            Launch OpenCode TUI"
+	@echo "  make contagent-gvisor     Launch OpenCode TUI under gVisor (needs runsc)"
 	@echo ""
 	@echo "Lifecycle:"
 	@echo "  make build                Build Docker images"
@@ -34,6 +35,9 @@ help:                                   # Show this help message
 	@echo "Container access:"
 	@echo "  make opencode             Launch OpenCode container (bash)"
 	@echo "  make ollama               Enter Ollama container (bash)"
+	@echo ""
+	@echo "Security:"
+	@echo "  make audit                Run recon-leak audit inside the agent container"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make prune                Remove everything (containers + volumes)"
@@ -88,6 +92,18 @@ _check_env_file:                         # Verify that .env exists
 contagent:                               # Launch OpenCode TUI inside agent container
 	@echo "Launching OpenCode TUI..."
 	docker compose exec opencode /bin/bash -lc "exec opencode"
+
+contagent-gvisor:                        # Launch OpenCode TUI under gVisor (runsc)
+	@command -v runsc >/dev/null 2>&1 || { \
+		echo "Error: runsc (gVisor) not found on this host."; \
+		echo "Manual install steps: see feat-hardening.md (section 5)."; \
+		exit 1; }
+	@echo "Launching OpenCode TUI (gVisor)..."
+	docker compose -f docker-compose.yml -f docker-compose.gvisor.yml up -d opencode
+	docker compose -f docker-compose.yml -f docker-compose.gvisor.yml exec opencode /bin/bash -lc "exec opencode"
+
+audit:                                   # Recon-leak audit inside the agent container
+	@docker compose exec opencode bash /workspace/scripts/audit-recon.sh
 
 opencode:                                # Enter the opencode container
 	docker compose exec opencode /bin/bash

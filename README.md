@@ -32,6 +32,7 @@ host but not from other machines on the network.
   [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 - ~16 GB RAM and ~25 GB free disk space
 - Linux with NVIDIA drivers
+- (optional) [gVisor](https://gvisor.dev) (`runsc`) — hardened runtime for the agent container
 
 ## Quick Start
 
@@ -104,6 +105,37 @@ design and cannot be mitigated without changing what this tool does:
   headroom of 2–4 GB free.
 - **Model provenance.** The `ollama/ollama:latest` image is unpinned; pin a version if
   you need reproducible setups.
+
+### Host information disclosure
+
+Docker namespaces PIDs, mounts, and cgroups, but it does **not** namespace `/proc`
+resource accounting or CPU affinity. Inside the agent container, the following
+probes reveal real host hardware and platform details:
+
+| Probe                             | Reveals                                                |
+| --------------------------------- | ------------------------------------------------------ |
+| `nproc`                           | host CPU thread count             |
+| `/proc/meminfo`                   | host RAM and swap limit        |
+| `/proc/cpuinfo`                   | all host cores and the exact CPU model                 |
+| `/proc/loadavg`, `/proc/uptime`   | host load average and uptime                           |
+| `/proc/modules`                   | names of host kernel modules                      |
+| `/proc/partitions`, `diskstats`   | host disks (model and size)                       |
+| `/sys/class/dmi/id/*`             | motherboard model and BIOS version                     |
+| `/sys/.../cpu/vulnerabilities/*`  | CPU generation and mitigation status                   |
+| `/proc/version`, `/proc/cmdline`  | kernel build, boot args, root disk UUID                |
+| `/proc/self/mountinfo`            | host containerd paths and layer snapshot IDs           |
+| `df -h /`                         | host disk size and usage                               |
+
+This is **information disclosure only** — a recon aid for a compromised model or
+dependency, not an escape. The hardening above still holds: `/proc/kcore`,
+`/proc/timer_list`, and similar are masked; `/sys` and `/proc/sys` are read-only;
+all capabilities are dropped; no GPU devices or docker socket are exposed.
+
+Some of this cannot be hidden in plain Docker (kernel version, `/proc/cmdline`,
+mountinfo host paths, host disk size) and is accepted residual risk. The remaining
+leaks have a mitigation roadmap (cpuset pinning, sanitized bind-mounts, gVisor) —
+see `feat-hardening.md` for the verified findings, decisions, and next steps, and
+run `make audit` to re-verify the live leak surface.
 
 ## License
 
