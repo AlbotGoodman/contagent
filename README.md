@@ -68,7 +68,7 @@ Copy `.env.example` to `.env` and adjust as needed:
 
 | Variable        | Default                  | Purpose                                       |
 | --------------- | ------------------------ | --------------------------------------------- |
-| `OLLAMA_MODEL`  | `qwen3-coder:30b`        | Model pulled by `make init` and used by OpenCode |
+| `OLLAMA_MODEL`  | `qwen3-coder:30b`        | Model pulled by `make init` and used as OpenCode's default. Choose other pulled models in the TUI with `/models` |
 | `OLLAMA_HOST`   | `http://localhost:11434` | Ollama endpoint (host side)                   |
 | `OPENCODE_MODE` | `agentic`                | Passed into the opencode container            |
 | `HOST_UID`      | `1000`                   | UID the container user runs as                |

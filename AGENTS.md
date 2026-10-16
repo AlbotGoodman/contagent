@@ -32,10 +32,17 @@ done by running the stack.
   host it is `127.0.0.1:11434` (loopback only — keep it that way).
 - The `opencode` container runs as non-root with a read-only root filesystem plus tmpfs;
   only `/workspace` and `config/` persist.
+- OpenCode is **v2** (installed from `https://opencode.ai/v2/install`).
+  `config/opencode.json` uses the v2 shape: `providers` + `settings.baseURL` (not v1's
+  `provider` + `options`/`npm`). Models are **not** listed in config — v2 auto-discovers
+  every model pulled into Ollama; `.env`'s `OLLAMA_MODEL` is only the default
+  (`ollama/{env:OLLAMA_MODEL}`).
 
 ## Repo conventions
+- **Never write to `TODO.md`.** It is the human's personal session notes; agents must not
+  create, edit, or append to it.
 - `TODO.md`, `PLAN.md`, and `data/` are gitignored (session notes / backlog). `data/headroom.md`
   is third-party Headroom docs for a planned feature — not project code.
-- Current working branch is `nano`; `master` is mainline; `headroom-proxy` is experimental.
+- Work in feature branches and never merge into `master`. 
 - Keep security posture in `docker-compose.yml` (`cap_drop: ALL`, `no-new-privileges`,
   `read_only`, resource limits) intact unless the task is explicitly about it.
