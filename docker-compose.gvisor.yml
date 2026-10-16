@@ -1,0 +1,13 @@
+# Optional override: run the opencode agent under gVisor (runsc).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.gvisor.yml up -d
+#   make contagent-gvisor
+#
+# Prerequisites (one-time, host-side): runsc installed and registered with
+# dockerd. Manual steps are documented in feat-hardening.md. The base
+# docker-compose.yml stays portable and works on hosts without gVisor.
+
+services:
+  opencode:
+    runtime: runsc
