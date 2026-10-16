@@ -18,7 +18,7 @@ RUN cp /root/.local/bin/uv /usr/local/bin/uv && \
 ENV PATH="/usr/local/bin:$PATH"
 
 # Install OpenCode to system-wide location
-RUN curl -fsSL https://opencode.ai/install -o /tmp/install-opencode.sh && \
+RUN curl -fsSL https://opencode.ai/v2/install -o /tmp/install-opencode.sh && \
     bash /tmp/install-opencode.sh --no-modify-path && \
     cp /root/.opencode/bin/opencode /usr/local/bin/opencode && \
     chmod 0755 /usr/local/bin/opencode && \
